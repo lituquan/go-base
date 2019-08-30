@@ -14,7 +14,7 @@ func product() {
 func comsume() int {
 	return <-ch
 }
-func main1() {
+func main() {
 
 	go product()
 

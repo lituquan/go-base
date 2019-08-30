@@ -25,17 +25,17 @@ func setOne() {
 	for i := 0; i < 10; i++ {
 		temp := i
 		//设置一个任务
-		group.Add(1)
+		groupStop.Add(1)
 		go func() {
 			//Done完成一个任务
-			defer group.Done()
+			defer groupStop.Done()
 			println("setOne", temp)
 		}()
 	}
 	//等待
-	group.Wait()
+	groupStop.Wait()
 }
-func main2() {
+func main() {
 	setAll()
 	setOne()
 }
