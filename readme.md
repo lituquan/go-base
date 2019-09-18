@@ -36,6 +36,10 @@
 8.优雅重启：socket和process处理
 	
 9.日志包
-	https://www.cnblogs.com/rickiyang/p/11074164.html	
+	https://www.cnblogs.com/rickiyang/p/11074164.html
+	
+10.pprof 和 GC
+    pprof可以看到内存分配情况
+    GC 可以看到回收情况
 
 

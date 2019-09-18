@@ -1,78 +1,74 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"time"
 )
 
-//Task
+//管理者：存储任务
+//工作者：执行任务
+
 type Task struct{
-	f func() error
+	Do func ()
 }
-//执行Task
-func (t *Task)Execude(){
-	t.f()
+//消费者
+type Worker struct{
+	id int
 }
-//创建Task
-func NewTask(f func() error) Task{
-	return Task{
-		f:f,
+
+//流水线
+func (w *Worker)Run(task Task){
+	log.Println(w.id,"正在干活")
+	task.Do()
+}
+//管理者
+type Pool struct{
+	max int //worker数
+	mem chan Task //任务队列
+	workers []Worker//消费者们
+	stop chan int
+}
+
+func (p *Pool)Run(){
+	for i:=0;i<p.max;i++{
+		p.workers[i]=Worker{i+1}
+		w:=p.workers[i]
+		go func() {
+			for task:=range p.mem{ //分发任务
+				w.Run(task)
+			}
+		}()
+	}
+	select {
+	case <-p.stop: //关闭
+		log.Println("stop")
 	}
 }
 
-//分发器
-type Pool struct {
-	worker_num int
-	JobsChannel chan Task
-	stopChannel chan int
-}
-//构造分发器
-func NewPool(cap int,max int)*Pool {
-	return &Pool{
-		worker_num:cap,
-		JobsChannel:make(chan Task,max),
-		stopChannel:make(chan int),
+func NewPool(maxWorker int,capPool int) *Pool {
+	p:=Pool{
+		maxWorker,
+		make(chan Task,capPool),
+		make([]Worker,maxWorker),
+		make(chan int),
 	}
-}
-//建立一个流水线，消化任务
-func (p *Pool)worker(work_ID int){
-	for task:=range p.JobsChannel{
-		task.Execude()
-	}
-}
-//分发器分发打开流水线
-func (p *Pool)Run(){
-	for i:=0;i<p.worker_num;i++{
-		go p.worker(i)//开启流水线
-	}
-	select {
-		case <-p.stopChannel:
-			close(p.JobsChannel)
-			break
-	}
-}
-//client:task-->Pool.channel
-//Pool.worker(s)<--Pool.channel
-func rabbit(n int) int{
-	if n==1 || n==2{
-		return 1
-	}else{
-		return rabbit(n-1)+rabbit(n-2)
-	}
+	return &p
 }
 func main(){
-	target:=20
-	pool:=NewPool(4,1000)
+	p:=NewPool(4,100)
 	go func() {
-		for i:=1;i<=target;i++{
-			j:=i
-			pool.JobsChannel<-NewTask(func() error {
-				fmt.Println(j,rabbit(j))
-				return nil
-			})
+		for i:=100;i<10000;i++{
+			temp:=i
+			p.mem<-Task{Do: func() { //生产者：提交任务
+				sum:=0
+				for j:=0;j<=temp;j++{
+					sum+=j
+				}
+				log.Println("计算sum",temp,sum)
+			}}
 		}
-		time.Sleep(2*time.Second)
-		pool.stopChannel<-1
+		time.Sleep(5*time.Second)
+		p.stop<-1
 	}()
-	pool.Run() //消费者
+	p.Run()
 }
