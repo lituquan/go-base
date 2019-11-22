@@ -41,5 +41,7 @@
 10.pprof 和 GC
     pprof可以看到内存分配情况
     GC 可以看到回收情况
-
-
+    
+11.go plugin
+12.go +build
+13 go regex
