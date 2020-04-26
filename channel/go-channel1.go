@@ -44,8 +44,23 @@ func whoStart(x string) {
 
 	}
 }
-func main() {
+func main1() {
 	go printA()
 	go printB()
 	whoStart("B")
+}
+
+func main() {
+	go func() {
+		for i := 0; i < n; i++ {
+			a <- i
+			println("A")
+			<-a
+		}
+	}()
+	for i := 0; i < n; i++ {
+		<-a
+		println("B")
+		a <- i
+	}
 }
