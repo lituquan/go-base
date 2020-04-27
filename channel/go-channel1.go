@@ -11,7 +11,7 @@ package main
 
 var a = make(chan int)
 var b = make(chan int)
-var n = 10
+var n = 1000
 
 func printA() {
 	//B等待
@@ -54,13 +54,13 @@ func main() {
 	go func() {
 		for i := 0; i < n; i++ {
 			a <- i
-			println("A")
+			print("A")
 			<-a
 		}
 	}()
 	for i := 0; i < n; i++ {
 		<-a
-		println("B")
+		print("B")
 		a <- i
 	}
 }
