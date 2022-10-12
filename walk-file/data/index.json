@@ -1,0 +1,32 @@
+[
+	{
+		"ID": 0,
+		"Path": "app.go",
+		"Content": "package main\n\nimport (\n\t\"log\"\n)\n\n//设置日志格式\nfunc init() {\n\tlog.SetFlags(log.LstdFlags | log.Lshortfile)\n}\n\nfunc main() {\n\t//加载文件\n\tloadCache(\"./\")\n\tRunServer()\n}\n"
+	},
+	{
+		"ID": 1,
+		"Path": "document.go",
+		"Content": "package main\n\nimport (\n\t\"bytes\"\n\t\"encoding/json\"\n\tioutil \"io/ioutil\"\n\t\"log\"\n\t\"os\"\n\t\"path/filepath\"\n\t\"strings\"\n)\n\nconst SUFFIX = \".go\"\nconst FROM_CACHE = false\n\nvar FILE_INDEX = \"data/index.json\"\nvar FILE_TOKEN = \"data/token.json\"\n\nvar ops = 0                 //记录文件总数\nvar codeIndex = make(index) //倒排索引：token--\u003eids\nvar files = []File{}        //文档\n\n// 遍历文档，插入索引表\nfunc ListDir(dirPth string) (err error) {\n\t//遍历目录\n\treturn filepath.Walk(dirPth, func(filename string, fi os.FileInfo, err error) error {\n\t\tif fi.IsDir() { // 忽略目录\n\t\t\treturn nil\n\t\t}\n\t\tif strings.HasSuffix(fi.Name(), SUFFIX) {\n\t\t\treadDocument(filename)\n\t\t}\n\t\treturn nil\n\t})\n}\n\n// 这里相当于做了索引和文档存储\nfunc loadCache(dir string) {\n\tindexs, err := ioutil.ReadFile(FILE_INDEX)\n\tif err == nil \u0026\u0026 FROM_CACHE {\n\t\tjson.Unmarshal(indexs, \u0026files)\n\t\ttokens, _ := ioutil.ReadFile(FILE_TOKEN)\n\t\tjson.Unmarshal(tokens, \u0026codeIndex)\n\t\treturn\n\t}\n\tListDir(dir)\n\twriteFile(codeIndex, FILE_TOKEN)\n\twriteFile(files, FILE_INDEX)\n}\n\n// 写json文件\nfunc writeFile(obj interface{}, file string) (err error) {\n\ttokens, _ := json.Marshal(obj)\n\tvar out bytes.Buffer\n\tjson.Indent(\u0026out, tokens, \"\", \"\\t\")\n\terr = ioutil.WriteFile(file, out.Bytes(), 0666)\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\treturn err\n}\n\ntype File struct {\n\tID      int\n\tPath    string\n\tContent string\n}\n\n// 插入一个文档和它的索引\nfunc readDocument(s string) (err error) {\n\tlog.Println(s)\n\tbytes, err := ioutil.ReadFile(s)\n\tif err != nil {\n\t\tlog.Println(err)\n\t\treturn\n\t}\n\tfile := File{ID: ops, Path: s, Content: string(bytes)}\n\tfiles = append(files, file)\n\tcodeIndex.add(file)\n\tops += 1\n\tif ops%500 == 0 {\n\t\tlog.Printf(\"ops %s\\n\", ops)\n\t}\n\treturn\n}\n"
+	},
+	{
+		"ID": 2,
+		"Path": "filter.go",
+		"Content": "package main\n\n// stopwordFilter returns a slice of tokens with stop words removed.\nfunc stopwordFilter(tokens []string) []string {\n\tvar stopwords = map[string]struct{}{\n\t\t\"a\": {}, \"and\": {}, \"be\": {}, \"have\": {}, \"i\": {},\n\t\t\"in\": {}, \"of\": {}, \"that\": {}, \"the\": {}, \"to\": {},\n\t}\n\tr := make([]string, 0, len(tokens))\n\tfor _, token := range tokens {\n\t\tif _, ok := stopwords[token]; !ok {\n\t\t\tr = append(r, token)\n\t\t}\n\t}\n\treturn r\n}\n"
+	},
+	{
+		"ID": 3,
+		"Path": "http.go",
+		"Content": "package main\n\nimport \"github.com/gin-gonic/gin\"\n\nfunc RunServer() {\n\tr := gin.Default()\n\n\t// 搜索包含key的文件\n\tr.GET(\"/:key\", func(c *gin.Context) {\n\t\tc.JSON(200, codeIndex.search(c.Param(\"key\")))\n\t})\n\n\t// 返回文档总数和token\n\tr.GET(\"/\", func(c *gin.Context) {\n\t\tvar maps = map[string]interface{}{}\n\t\tmaps[\"len\"] = len(files)\n\t\tmaps[\"token\"] = func() []string {\n\t\t\tvar key = []string{}\n\t\t\tfor k, _ := range codeIndex {\n\t\t\t\tkey = append(key, k)\n\t\t\t}\n\t\t\treturn key\n\t\t}()\n\t\tc.JSON(200, maps)\n\t})\n\n\t// 返回文档总数和token\n\tr.GET(\"/files/all\", func(c *gin.Context) {\n\t\tvar files_ = []File{}\n\t\tfor _, v := range files {\n\t\t\tfiles_ = append(files_, File{v.ID, v.Path, \"\"})\n\t\t}\n\t\tc.JSON(200, files_)\n\t})\n\tr.Run()\n}\n"
+	},
+	{
+		"ID": 4,
+		"Path": "index.go",
+		"Content": "package main\n\nimport \"sync\"\n\n// index is an inverted index. It maps tokens to document IDs.\ntype index map[string][]int\n\nvar locks sync.Mutex\n\n// add adds documents to the index.\nfunc (idx index) add(doc File) {\n\tlocks.Lock()\n\tdefer locks.Unlock()\n\tfor _, token := range analyze(doc.Content) {\n\t\tids := idx[token]\n\t\tif ids != nil \u0026\u0026 ids[len(ids)-1] == doc.ID {\n\t\t\t// Don't add same ID twice.\n\t\t\tcontinue\n\t\t}\n\t\tidx[token] = append(ids, doc.ID)\n\t}\n}\n\n// intersection returns the set intersection between a and b.\n// a and b have to be sorted in ascending order and contain no duplicates.\nfunc intersection(a []int, b []int) []int {\n\tmaxLen := len(a)\n\tif len(b) \u003e maxLen {\n\t\tmaxLen = len(b)\n\t}\n\tr := make([]int, 0, maxLen)\n\tvar i, j int\n\tfor i \u003c len(a) \u0026\u0026 j \u003c len(b) {\n\t\tif a[i] \u003c b[j] {\n\t\t\ti++\n\t\t} else if a[i] \u003e b[j] {\n\t\t\tj++\n\t\t} else {\n\t\t\tr = append(r, a[i])\n\t\t\ti++\n\t\t\tj++\n\t\t}\n\t}\n\treturn r\n}\n\n// search queries the index for the given text.\nfunc (idx index) search(text string) []File {\n\tvar r []int\n\tfor _, token := range analyze(text) {\n\t\tif ids, ok := idx[token]; ok {\n\t\t\tif r == nil {\n\t\t\t\tr = ids\n\t\t\t} else {\n\t\t\t\tr = intersection(r, ids)\n\t\t\t}\n\t\t} else {\n\t\t\t// Token doesn't exist.\n\t\t\treturn nil\n\t\t}\n\t}\n\tvar fileSearch = []File{}\n\tfor _, v := range r {\n\t\tfile := File{files[v].ID, files[v].Path, \"\"}\n\t\t//file := files[v]\n\t\tfileSearch = append(fileSearch, file)\n\t\tif len(fileSearch) \u003e 20 {\n\t\t\tbreak\n\t\t}\n\t}\n\treturn fileSearch\n}\n"
+	},
+	{
+		"ID": 5,
+		"Path": "tokenizer.go",
+		"Content": "package main\n\nimport (\n\t\"strings\"\n\t\"unicode\"\n)\n\n// tokenize returns a slice of tokens for the given text.\nfunc tokenize(text string) []string {\n\treturn strings.FieldsFunc(text, func(r rune) bool {\n\t\t// Split on any character that is not a letter or a number.\n\t\treturn !unicode.IsLetter(r) \u0026\u0026 !unicode.IsNumber(r)\n\t})\n}\n\n// analyze analyzes the text and returns a slice of tokens.\nfunc analyze(text string) []string {\n\ttokens := tokenize(text)\n\ttokens = stopwordFilter(tokens)\n\treturn tokens\n}\n"
+	}
+]
