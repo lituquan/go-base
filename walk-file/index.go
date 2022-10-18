@@ -1,23 +1,39 @@
 package main
 
-import "sync"
+import (
+	"github.com/patrickmn/go-cache"
+	"sync"
+	"time"
+)
 
 // index is an inverted index. It maps tokens to document IDs.
-type index map[string][]int
+type index struct {
+	contain *cache.Cache
+}
 
 var locks sync.Mutex
+
+func New() index {
+	// 创建缓存
+	var codeIndex = cache.New(1000*time.Hour, 1000*time.Hour)
+	return index{codeIndex}
+}
 
 // add adds documents to the index.
 func (idx index) add(doc File) {
 	locks.Lock()
 	defer locks.Unlock()
 	for _, token := range analyze(doc.Content) {
-		ids := idx[token]
-		if ids != nil && ids[len(ids)-1] == doc.ID {
-			// Don't add same ID twice.
-			continue
+		ids, ok := idx.contain.Get(token)
+		v := []int{}
+		if ok {
+			if v = ids.([]int); v[len(v)-1] == doc.ID {
+				// Don't add same ID twice.
+				continue
+			}
 		}
-		idx[token] = append(ids, doc.ID)
+		v = append(v, doc.ID)
+		idx.contain.Set(token, v, cache.NoExpiration)
 	}
 }
 
@@ -48,11 +64,18 @@ func intersection(a []int, b []int) []int {
 func (idx index) search(text string) []File {
 	var r []int
 	for _, token := range analyze(text) {
-		if ids, ok := idx[token]; ok {
-			if r == nil {
-				r = ids
+		ids, ok := idx.contain.Get(token)
+		v := []int{}
+		if ok {
+			if v, ok = ids.([]int); ok {
+				if r == nil {
+					r = v
+				} else {
+					r = intersection(r, v)
+				}
 			} else {
-				r = intersection(r, ids)
+				// Token doesn't exist.
+				return nil
 			}
 		} else {
 			// Token doesn't exist.
@@ -69,4 +92,10 @@ func (idx index) search(text string) []File {
 		}
 	}
 	return fileSearch
+}
+
+func (idx index) loadFromMap(kv map[string][]int) {
+	for k, v := range kv {
+		codeIndex.contain.Set(k, v, cache.NoExpiration)
+	}
 }

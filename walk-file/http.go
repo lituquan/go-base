@@ -16,7 +16,7 @@ func RunServer() {
 		maps["len"] = len(files)
 		maps["token"] = func() []string {
 			var key = []string{}
-			for k, _ := range codeIndex {
+			for k, _ := range codeIndex.contain.Items() {
 				key = append(key, k)
 			}
 			return key

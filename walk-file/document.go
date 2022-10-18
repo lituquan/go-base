@@ -16,9 +16,9 @@ const FROM_CACHE = false
 var FILE_INDEX = "data/index.json"
 var FILE_TOKEN = "data/token.json"
 
-var ops = 0                 //记录文件总数
-var codeIndex = make(index) //倒排索引：token-->ids
-var files = []File{}        //文档
+var ops = 0           //记录文件总数
+var codeIndex = New() //倒排索引：token-->ids
+var files = []File{}  //文档
 
 // 遍历文档，插入索引表
 func ListDir(dirPth string) (err error) {
@@ -37,14 +37,19 @@ func ListDir(dirPth string) (err error) {
 // 这里相当于做了索引和文档存储
 func loadCache(dir string) {
 	indexs, err := ioutil.ReadFile(FILE_INDEX)
+	var kv = make(map[string][]int)
 	if err == nil && FROM_CACHE {
 		json.Unmarshal(indexs, &files)
 		tokens, _ := ioutil.ReadFile(FILE_TOKEN)
-		json.Unmarshal(tokens, &codeIndex)
+		json.Unmarshal(tokens, &kv)
+		codeIndex.loadFromMap(kv)
 		return
 	}
 	ListDir(dir)
-	writeFile(codeIndex, FILE_TOKEN)
+	for k, v := range codeIndex.contain.Items() {
+		kv[k] = v.Object.([]int)
+	}
+	writeFile(kv, FILE_TOKEN)
 	writeFile(files, FILE_INDEX)
 }
 
